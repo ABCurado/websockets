@@ -8,7 +8,7 @@ from websockets.frames import OP_BINARY, OP_CONT, OP_TEXT, Frame
 
 
 class SimpleQueueTests(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
+    async def asyncSetUp(self):
         self.queue = SimpleQueue()
 
     async def test_len(self):
@@ -43,10 +43,11 @@ class SimpleQueueTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AssemblerTests(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
+    async def asyncSetUp(self):
         self.pause = unittest.mock.Mock()
         self.resume = unittest.mock.Mock()
-        self.assembler = Assembler(low=2, high=3, pause=self.pause, resume=self.resume)
+        self.assembler = Assembler(pause=self.pause, resume=self.resume)
+        self.assembler.set_limits(low=1, high=2)
 
     # Test get
 

@@ -9,6 +9,7 @@ from typing import (
     Callable,
     Generic,
     Optional,
+    Tuple,
     TypeVar,
 )
 
@@ -67,15 +68,19 @@ class Assembler:
     """
     Assemble messages from frames.
 
-    :class:`Assembler` expects only data frame and that the stream of
-    frames respects the protocol. If it doesn't, the behavior is undefined.
+    :class:`Assembler` expects only data frames. The stream of frames must
+    respect the protocol; if it doesn't, the behavior is undefined.
+
+    Args:
+        pause: Called when the buffer of frames goes above the high water mark;
+            should pause reading from the network.
+        resume: Called when the buffer of frames goes below the low water mark;
+            should resume reading from the network.
 
     """
 
     def __init__(
         self,
-        high: int = 16,
-        low: int = 4,
         pause: Callable[[], Any] = lambda: None,
         resume: Callable[[], Any] = lambda: None,
     ) -> None:
@@ -86,9 +91,9 @@ class Assembler:
         # call to Protocol.data_received() could produce thousands of frames,
         # which must be buffered. Instead, we pause reading when the buffer goes
         # above the high limit and we resume when it goes under the low limit.
+        self.high = 16
+        self.low = 4
         self.paused = False
-        self.high = high
-        self.low = low
         self.pause = pause
         self.resume = resume
 
@@ -210,17 +215,27 @@ class Assembler:
         self.frames.put(frame)
         self.maybe_pause()
 
-    def maybe_resume(self) -> None:
-        """Resume the writer if queue is below the low water mark."""
-        if len(self.frames) < self.low and self.paused:
-            self.paused = False
-            self.resume()
+    def get_limits(self) -> Tuple[int, int]:
+        """Return low and high water marks for flow control."""
+        return self.low, self.high
+
+    def set_limits(self, low: int = 4, high: int = 16) -> None:
+        """Configure low and high water marks for flow control."""
+        self.low, self.high = low, high
 
     def maybe_pause(self) -> None:
         """Pause the writer if queue is above the high water mark."""
-        if len(self.frames) >= self.high and not self.paused:
+        # Check for "> high" to support high = 0
+        if len(self.frames) > self.high and not self.paused:
             self.paused = True
             self.pause()
+
+    def maybe_resume(self) -> None:
+        """Resume the writer if queue is below the low water mark."""
+        # Check for "<= low" to support low = 0
+        if len(self.frames) <= self.low and self.paused:
+            self.paused = False
+            self.resume()
 
     def close(self) -> None:
         """
